@@ -1,28 +1,33 @@
-use std::env;
-use std::error::Error;
-use std::result::Result;
+use command::Command;
+use commands::{new_container::NewContainer, remove_container::RemoveContainer};
 
-pub mod command;
-pub mod commands;
+use std::{env, error::Error};
 
-fn main() {
+mod command;
+mod commands;
+
+fn run() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() < 2 {
-        panic!("Please enter a command");
-    }
-
     match args[1].as_str() {
-        "new_container" => {
-            let command = NewContainer::build(&args[2..]);
-            command.run();
+        "NewContainer" => {
+            let command = NewContainer::build(&args[2..])?;
+            command.run()
         }
-        "remove_container" => {
-            let command = RemoveContainer::build(&args[2..]);
-            command.run();
+        "RemoveContainer" => {
+            let command = RemoveContainer::build(&args[2..])?;
+            command.run()
         }
-        _ => {
-            panic!("NOOOO");
+        _ => Err("Unknown command".into()),
+    }
+}
+
+fn main() {
+    match run() {
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!("\x1b[1;31m{} {:#}", "Error", e);
+            std::process::exit(1);
         }
     }
 }
