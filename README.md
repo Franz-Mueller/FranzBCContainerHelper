@@ -60,14 +60,16 @@ These ideas are not commitments. The direction of the project will depend on wha
 
 Issues are not being used for planning yet. The following list contains some of the next improvements I want to keep in mind:
 
-* [x] Implement custom error types
-* [ ] Add a help flag
-* [ ] Add a command for checking and installing host prerequisites, such as Docker
-* [ ] Improve command output and error reporting
-* [ ] Document the available commands
-* [ ] Add tests for reusable components
-* [ ] Group Errors
-* [ ] Replace `box<dyn Error>` with proper handling
+- [x] Implement custom error types
+- [ ] Add a help flag
+- [ ] Add a command for checking and installing host prerequisites, such as Docker
+- [ ] Improve command output and error reporting
+- [ ] Document the available commands
+- [ ] Add tests for reusable components
+- [ ] Group Errors
+- [ ] Replace `box<dyn Error>` with proper handling
+- [ ] Parse and enforce string prositionsin command to ensure order
+- [ ] allow non positional flags
 
 ## Disclaimer
 

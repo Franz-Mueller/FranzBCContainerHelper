@@ -4,12 +4,14 @@ use std::error::Error;
 
 pub struct NewContainer {
     name: String,
+    version: String,
 }
 
 impl Command for NewContainer {
     fn build(args: &[String]) -> NewContainer {
         NewContainer {
             name: args[0].to_string(),
+            version: args[1].to_string(),
         }
     }
     fn run(&self) -> Result<(), Box<dyn Error>> {
