@@ -1,5 +1,5 @@
 use crate::command::Command;
-use crate::docker::container::run_docker_container;
+use crate::docker::container::create_bc_docker_container;
 use std::error::Error;
 
 pub struct NewContainer {
@@ -13,7 +13,7 @@ impl Command for NewContainer {
         }
     }
     fn run(&self) -> Result<(), Box<dyn Error>> {
-        run_docker_container(&self.name);
+        create_bc_docker_container(&self.name)?;
         Ok(())
     }
 }

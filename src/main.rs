@@ -7,9 +7,12 @@ mod command;
 mod commands;
 mod docker;
 
+const RED: &str = "\x1b[31m";
+const RESET: &str = "\x1b[0m";
+
 fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
     if args.len() < 2 {
-        return Err("Please provide arguments.".into());
+        return Err("Please provide Arguments.".into());
     }
 
     match args[1].as_str() {
@@ -29,7 +32,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     if let Err(e) = run(&args) {
-        eprint!("Application error: {e}");
+        eprintln!("{RED}Application error: {e}{RESET}");
         process::exit(1);
     }
 }

@@ -1,22 +1,39 @@
 use std::error::Error;
 use std::process::Command;
 
-pub fn run_docker_container(name: &String) -> Result<(), Box<dyn Error>> {
-    let output = if cfg!(target_os = "windows") {
-        Command::new("cmd")
-            .args(["/C", "echo hello"])
-            .output()
-            .expect("failed to execute process")
+pub fn create_bc_docker_container(name: &str) -> Result<(), Box<dyn Error>> {
+    let output = Command::new("docker")
+        .arg("run")
+        .arg("--name")
+        .arg(name)
+        .arg("busybox")
+        .output()?;
+
+    if output.status.success() {
+        Ok(())
     } else {
-        Command::new("sh")
-            .arg("-c")
-            .arg("docker run {name}")
-            .output()
-            .expect("failed to execute process")
-    };
+        let status = output.status;
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!(
+            "Could not create the container with status code: {status}\n{}",
+            stderr.trim()
+        )
+        .into())
+    }
+}
 
-    let hello = output.stdout;
+pub fn remove_bc_docker_container(name: &str) -> Result<(), Box<dyn Error>> {
+    let output = Command::new("docker").arg("rm").arg(name).output()?;
 
-    println!("{name}");
-    Ok(())
+    if output.status.success() {
+        Ok(())
+    } else {
+        let status = output.status;
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!(
+            "Could not remove the container with status code: {status}\n{}",
+            stderr.trim()
+        )
+        .into())
+    }
 }
