@@ -8,10 +8,11 @@ pub struct RemoveContainer {
 impl Command for RemoveContainer {
     fn build(args: &[String]) -> RemoveContainer {
         RemoveContainer {
-            name: "bccontainer".to_string(),
+            name: args[1].to_string(),
         }
     }
     fn run(&self) -> Result<(), Box<dyn Error>> {
+        println!("{}", self.name);
         Ok(())
     }
 }
