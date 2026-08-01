@@ -1,18 +1,20 @@
 use crate::command::Command;
 use crate::commands::{new_container::NewContainer, remove_container::RemoveContainer};
+use crate::errors::{NoCommand, UnknownCommand};
 use std::error::Error;
 use std::{env, process};
 
 mod command;
 mod commands;
 mod docker;
+mod errors;
 
 const RED: &str = "\x1b[31m";
 const RESET: &str = "\x1b[0m";
 
 fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
     if args.len() < 2 {
-        return Err("Please provide Arguments.".into());
+        return Err(NoCommand.into());
     }
 
     match args[1].as_str() {
@@ -24,7 +26,10 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
             let command = RemoveContainer::build(&args[2..]);
             command.run()
         }
-        _ => Err("Command not found.".into()),
+        n => Err(UnknownCommand {
+            false_command: n.to_string(),
+        }
+        .into()),
     }
 }
 
