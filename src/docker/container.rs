@@ -1,8 +1,11 @@
+use crate::docker::artifact::get_artifact;
 use crate::errors::{FailedContainerCreation, FailedContainerRemoval};
 use std::error::Error;
 use std::process::Command;
 
 pub fn create_bc_docker_container(name: &str) -> Result<(), Box<dyn Error>> {
+    get_artifact("deployment_type", "version")?;
+
     let output = Command::new("docker")
         .arg("run")
         .arg("--name")

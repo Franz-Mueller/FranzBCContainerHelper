@@ -70,6 +70,9 @@ Issues are not being used for planning yet. The following list contains some of 
 - [ ] Replace `box<dyn Error>` with proper handling
 - [ ] Parse and enforce string prositionsin command to ensure order
 - [ ] allow non positional flags
+- [ ] Improve artifact download
+- [ ] early exits:
+  - [ ] check if docker service is running
 
 ## Disclaimer
 
