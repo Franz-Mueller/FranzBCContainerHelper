@@ -1,5 +1,5 @@
 use crate::command::Command;
-use crate::commands::{new_container::NewContainer, remove_container::RemoveContainer};
+use crate::commands::{new_container::NewBCContainer, remove_container::RemoveBCContainer};
 use crate::errors::{NoCommand, UnknownCommand};
 use std::error::Error;
 use std::{env, process};
@@ -18,12 +18,12 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
     }
 
     match args[1].as_str() {
-        "NewContainer" => {
-            let command = NewContainer::build(&args[2..]);
+        "NewBCContainer" => {
+            let command = NewBCContainer::build(&args[2..]);
             command.run()
         }
-        "RemoveContainer" => {
-            let command = RemoveContainer::build(&args[2..]);
+        "RemoveBCContainer" => {
+            let command = RemoveBCContainer::build(&args[2..]);
             command.run()
         }
         n => Err(UnknownCommand {

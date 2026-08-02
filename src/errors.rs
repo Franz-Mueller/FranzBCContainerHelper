@@ -29,23 +29,23 @@ impl Error for NoCommand {}
 
 //#region Docker Errors
 #[derive(Debug)]
-pub struct FailedContainerCreation {
+pub struct FailedBCContainerCreation {
     pub status: String,
     pub stderr: String,
 }
 
-impl fmt::Display for FailedContainerCreation {
+impl fmt::Display for FailedBCContainerCreation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "could not create the container with {}\n{}",
+            "could not create the bc container with {}\n{}",
             self.status,
             self.stderr.trim()
         )
     }
 }
 
-impl Error for FailedContainerCreation {}
+impl Error for FailedBCContainerCreation {}
 
 #[derive(Debug)]
 pub struct FailedContainerRemoval {
@@ -66,3 +66,22 @@ impl fmt::Display for FailedContainerRemoval {
 
 impl Error for FailedContainerRemoval {}
 //#endregion Docker Errors
+
+//#region compatability errors
+#[derive(Debug)]
+pub struct OnlyAvailableOnWindows {
+    pub command: String,
+}
+
+impl fmt::Display for OnlyAvailableOnWindows {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "this command is only available on windows: {}",
+            self.command
+        )
+    }
+}
+
+impl Error for OnlyAvailableOnWindows {}
+//#endregion compatability errors
