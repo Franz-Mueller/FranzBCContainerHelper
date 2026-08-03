@@ -65,6 +65,25 @@ impl fmt::Display for FailedContainerRemoval {
 }
 
 impl Error for FailedContainerRemoval {}
+
+#[derive(Debug)]
+pub struct FailedBCAppInstall {
+    pub status: String,
+    pub stderr: String,
+}
+
+impl fmt::Display for FailedBCAppInstall {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "could not install the bc apps with: {}\n{}",
+            self.status,
+            self.stderr.trim()
+        )
+    }
+}
+
+impl Error for FailedBCAppInstall {}
 //#endregion Docker Errors
 
 //#region compatability errors
