@@ -1,5 +1,5 @@
 use crate::command::Command;
-use crate::docker::container::create_bc_docker_container;
+use crate::docker::container::install_app_into_bc_container;
 use std::error::Error;
 
 pub struct InstallBCApps {
@@ -15,6 +15,7 @@ impl Command for InstallBCApps {
         }
     }
     fn run(&self) -> Result<(), Box<dyn Error>> {
+        install_app_into_bc_container(&self.container_name, &self.path)?;
         Ok(())
     }
 }

@@ -1,6 +1,8 @@
 use crate::command::Command;
-use crate::commands::install_apps::InstallBCApps;
-use crate::commands::{new_container::NewBCContainer, remove_container::RemoveBCContainer};
+use crate::commands::{
+    install_apps::InstallBCApps, new_container::NewBCContainer,
+    new_container_with_apps::NewBCContainerWithApps, remove_container::RemoveBCContainer,
+};
 use crate::errors::{NoCommand, UnknownCommand};
 use std::error::Error;
 use std::{env, process};
@@ -29,6 +31,10 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
         }
         "InstallBCApps" => {
             let command = InstallBCApps::build(&args[2..]);
+            command.run()
+        }
+        "NewBCContainerWithApps" => {
+            let command = NewBCContainerWithApps::build(&args[2..]);
             command.run()
         }
         n => Err(UnknownCommand {
