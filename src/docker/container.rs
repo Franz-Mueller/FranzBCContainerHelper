@@ -14,7 +14,8 @@ pub fn create_bc_docker_container(
         let get_artifact_url_command =
             format!("(Get-BCArtifactUrl -version {version} -country {country} -select Latest)");
 
-        Command::new("New-BcContainer")
+        Command::new("pwsh")
+            .arg("New-BcContainer")
             .arg("-accept_eula")
             .args(["-containerName", name])
             .args(["-artifactUrl", &get_artifact_url_command])
@@ -41,10 +42,13 @@ pub fn create_bc_docker_container(
 
 pub fn remove_bc_docker_container(name: &str) -> Result<(), Box<dyn Error>> {
     let output = if cfg!(target_os = "windows") {
-        Command::new("Remove-BcContainer").arg(name).output()?
+        Command::new("pwsh")
+            .arg("Remove-BcContainer")
+            .arg(name)
+            .output()?
     } else {
         return Err(OnlyAvailableOnWindows {
-            command: "NewBCContainer".to_string(), // TODO move to better spot
+            command: "RemoveBCContainer".to_string(), // TODO move to better spot
         }
         .into());
     };
@@ -62,7 +66,8 @@ pub fn remove_bc_docker_container(name: &str) -> Result<(), Box<dyn Error>> {
 
 pub fn install_app_into_bc_container(name: &str, path: &str) -> Result<(), Box<dyn Error>> {
     let output = if cfg!(target_os = "windows") {
-        Command::new("Publish-BcContainerApp")
+        Command::new("pwsh")
+            .arg("Publish-BcContainerApp")
             .args(["-containerName", name])
             .args(["-appFile", path])
             .arg("-skipVerification")

@@ -21,22 +21,10 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
     }
 
     match args[1].as_str() {
-        "NewBCContainer" => {
-            let command = NewBCContainer::build(&args[2..]);
-            command.run()
-        }
-        "RemoveBCContainer" => {
-            let command = RemoveBCContainer::build(&args[2..]);
-            command.run()
-        }
-        "InstallBCApps" => {
-            let command = InstallBCApps::build(&args[2..]);
-            command.run()
-        }
-        "NewBCContainerWithApps" => {
-            let command = NewBCContainerWithApps::build(&args[2..]);
-            command.run()
-        }
+        "NewBCContainer" => NewBCContainer::build(&args[2..]).run(),
+        "RemoveBCContainer" => RemoveBCContainer::build(&args[2..]).run(),
+        "InstallBCApps" => InstallBCApps::build(&args[2..]).run(),
+        "NewBCContainerWithApps" => NewBCContainerWithApps::build(&args[2..]).run(),
         n => Err(UnknownCommand {
             false_command: n.to_string(),
         }
