@@ -5,7 +5,7 @@ use bollard::Docker;
 pub async fn get_version() {
     let docker = Docker::connect_with_local_defaults().unwrap();
     let version = docker.version().await.unwrap();
-    println!("{:?}", version);
+    dbg!(version);
 }
 
 #[tauri::command]
