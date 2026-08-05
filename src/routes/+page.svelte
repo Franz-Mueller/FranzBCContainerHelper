@@ -6,13 +6,15 @@
 
   async function greet(event: Event) {
     event.preventDefault();
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
     greetMsg = await invoke("greet", { name });
   }
-  async function my_custom_command(event: Event) {
+  async function get_version(event: Event) {
     event.preventDefault();
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetMsg = await invoke("my_custom_command");
+    greetMsg = await invoke("get_version");
+  }
+  async function list_containers(event: Event) {
+    event.preventDefault();
+    greetMsg = await invoke("list_containers");
   }
 </script>
 
@@ -38,8 +40,11 @@
     <button type="submit">Greet</button>
   </form>
   <p>{greetMsg}</p>
-  <form class="row" onsubmit={my_custom_command}>
-    <button type="submit">Cmd</button>
+  <form class="row" onsubmit={get_version}>
+    <button type="submit">Print Docker Version</button>
+  </form>
+  <form class="row" onsubmit={list_containers}>
+    <button type="submit">List Containers</button>
   </form>
 </main>
 

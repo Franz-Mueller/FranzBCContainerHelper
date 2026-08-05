@@ -1,4 +1,4 @@
-use self::docker::container::my_custom_command;
+use self::docker::container::{get_version, list_containers};
 mod docker;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -11,7 +11,11 @@ fn greet(name: &str) -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, my_custom_command])
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            get_version,
+            list_containers
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
