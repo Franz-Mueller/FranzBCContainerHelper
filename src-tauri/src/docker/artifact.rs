@@ -1,41 +1,28 @@
 use reqwest;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::error::Error;
 
+// TODO Refactoring
+// TODO Error Handling
+// TODO Testing
+
+#[derive(Clone, Copy, PartialEq, PartialOrd, Ord, Eq)]
 struct Version {
-    major: String,
-    minor: String,
-    build: String,
-    revision: String,
+    major: u32,
+    minor: u32,
+    build: u32,
+    revision: u32,
 }
 
 impl Version {
     fn new(version: &str) -> Version {
-        let mut v: Vec<&str> = version.split(".").collect();
-        match v.len() {
-            1 => {
-                v.push("0");
-                v.push("0");
-                v.push("0");
-            }
-            2 => {
-                v.push("0");
-                v.push("0");
-            }
-            3 => {
-                v.push("0");
-            }
-            4 => {}
-            _ => {
-                panic!("wrong format for version")
-            }
-        };
+        let v: Vec<&str> = version.split(".").collect();
+
         Version {
-            major: v[0].to_string(),
-            minor: v[1].to_string(),
-            build: v[2].to_string(),
-            revision: v[3].to_string(),
+            major: v[0].parse().unwrap(),
+            minor: v[1].parse().unwrap(),
+            build: v[2].parse().unwrap(),
+            revision: v[3].parse().unwrap(),
         }
     }
 
@@ -47,102 +34,89 @@ impl Version {
     }
 }
 
+/// Returns a artifact url.
+/// If the provided version isn't available, it will look for the closest version within the major.
+/// This means another minor, build or revision could be choosen.
 async fn build_bc_artifact_url(
     deployment_type: &str,
-    country: &str,
     version: &str,
+    country: &str,
 ) -> Result<String, Box<dyn Error>> {
-    let available_deployment_types = ["sandbox", "onprem"];
-    if !available_deployment_types.contains(&deployment_type) {
+    if !["sandbox", "onprem"].contains(&deployment_type) {
         return Err("cannot build artifact url, deployment type not valid".into());
     }
+    let version = Version::new(version);
+
     let storage_account = "bcartifacts-exdbf9fwegejdqak.b02.azurefd.net".to_string();
+
     let base_url = format!("https://{storage_account}/{deployment_type}");
-    let lang_index_url = format!("{base_url}/indexes/{country}.json");
-    let version = get_best_bc_artifact_version(&lang_index_url, version).await?; // TODO Version query
+    let country_index_url = format!("{base_url}/indexes/{country}.json");
+
+    let version = get_best_bc_artifact_version(&country_index_url, version).await?;
+
     Ok(format!("{base_url}/{version}/{country}"))
 }
 
 async fn get_best_bc_artifact_version(
-    lang_index_url: &str,
-    version: &str,
+    country_index_url: &str,
+    searched_version: Version,
 ) -> Result<String, Box<dyn Error>> {
-    let body = reqwest::get(lang_index_url).await?.text().await?;
-    let data: Vec<HashMap<String, String>> = serde_json::from_str(&body)?;
-    let available_versions = extract_available_versions(data);
-    let searched_version = Version::new(&version);
-    let available_versions = filter_available_versions(&searched_version, available_versions);
-    Ok(available_versions.get_version_string())
+    let body = reqwest::get(country_index_url).await?.text().await?;
+    // Data is expected to arrive in this format:
+    // [{"Version":"15.4.41023.43755","CreationTime":"2020-06-26T00:13:59Z"},
+    // {"Version":"16.0.11240.31204","CreationTime":"2021-10-11T08:49:00Z"}]
+    let version_data: Vec<HashMap<String, String>> = serde_json::from_str(&body)?; // IDEA Cache?
+
+    let available_versions: Vec<Version> = extract_available_versions(version_data);
+    let closest_available_version: Version =
+        search_closest_available_version(&searched_version, available_versions);
+
+    Ok(closest_available_version.get_version_string())
 }
 
-fn filter_available_versions(
-    searched_version: &Version,
-    available_versions: Vec<Version>,
-) -> Version {
-    let mut lvl_version_percision: u32 = 0;
-    for i in &available_versions {
-        if i.major == searched_version.major {
-            lvl_version_percision = 1;
-            if i.minor == searched_version.minor {
-                lvl_version_percision = 2;
-                if i.build == searched_version.build {
-                    lvl_version_percision = 3;
-                    if i.revision == searched_version.revision {
-                        return Version {
-                            major: i.major.to_string(),
-                            minor: i.minor.to_string(),
-                            build: i.build.to_string(),
-                            revision: i.revision.to_string(),
-                        };
-                    }
-                }
-            }
-        }
-    }
-
-    let mut new_available_versions: Vec<Version> = Vec::new();
-
-    if lvl_version_percision == 1 {
-        for i in available_versions {
-            if i.major == searched_version.major {
-                new_available_versions.push(i);
-            }
-        }
-    } else if lvl_version_percision == 2 {
-        for i in available_versions {
-            if i.major == searched_version.major && i.minor == searched_version.minor {
-                new_available_versions.push(i);
-            }
-        }
-    } else if lvl_version_percision == 3 {
-        for i in available_versions {
-            if i.major == searched_version.major
-                && i.minor == searched_version.minor
-                && i.build == searched_version.build
-            {
-                new_available_versions.push(i);
-            }
-        }
-    } else {
-        panic!("Version format not valid");
-    }
-
-    let v = new_available_versions.last().unwrap();
-
-    Version {
-        major: v.major.to_string(),
-        minor: v.minor.to_string(),
-        build: v.build.to_string(),
-        revision: v.revision.to_string(),
-    }
-}
-
-fn extract_available_versions(data: Vec<HashMap<String, String>>) -> Vec<Version> {
+fn extract_available_versions(version_data: Vec<HashMap<String, String>>) -> Vec<Version> {
+    // TODO solve with map
     let mut available_versions: Vec<Version> = Vec::new();
-    for d in data.iter() {
+    for d in version_data.iter() {
         available_versions.push(Version::new(d.get(&"Version".to_string()).unwrap()));
     }
     available_versions
+}
+
+// IDEA Provide Setting on how strict to be with version selection
+fn search_closest_available_version(
+    searched_version: &Version,
+    mut available_versions: Vec<Version>,
+) -> Version {
+    if available_versions.contains(searched_version) {
+        return *searched_version;
+    }
+
+    available_versions.retain(|v| v.major == searched_version.major);
+
+    if available_versions.is_empty() {
+        panic!("major not available");
+    }
+
+    if available_versions
+        .iter()
+        .any(|v| v.minor == searched_version.minor)
+    {
+        available_versions.retain(|v| v.minor == searched_version.minor);
+        if available_versions
+            .iter()
+            .any(|v| v.build == searched_version.build)
+        {
+            available_versions.retain(|v| v.build == searched_version.build);
+        }
+    }
+
+    available_versions
+        .iter()
+        .filter(|v| *v > searched_version)
+        .max()
+        .copied()
+        .unwrap()
 }
 
 #[cfg(test)]
@@ -156,7 +130,7 @@ mod tests {
             .build()
             .unwrap()
             .block_on(async {
-                let result = build_bc_artifact_url("sandbox", "de", "15").await;
+                let result = build_bc_artifact_url("sandbox", "15.4.34.24553", "de").await; // expected version to find = 15.4.41023.43755
                 match result {
                     Ok(s) => println!("{s}"),
                     Err(e) => panic!("unexpected error: {e}"),
