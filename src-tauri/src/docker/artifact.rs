@@ -1,11 +1,87 @@
 use reqwest;
 use std::collections::HashMap;
 use std::error::Error;
+use std::fs;
+use std::fs::File;
+use std::io::Write;
+use std::path::Path;
+use zip::ZipArchive;
 
 // TODO Refactoring
 // TODO Error Handling
 // TODO Testing
 
+// region download artifact
+/// Returns the path to the requestet artifact.
+/// If the path allready exists in cache the download is skipped.
+/// The path should be in format: ./artifacts/{country}/{version}
+async fn download_artifact<'a>(
+    url: &'a str,
+    path_name: &'a str,
+) -> Result<&'a Path, Box<dyn Error>> {
+    // IDEA Check path before downloading in case the desired version is in cache but cannot be found in the index
+    // TODO move into container creation function. could be solved otherwise, but later the container function should manage cache interaction anyways
+    // path_name = {
+    //     let url_parts: Vec<&str> = url.split("/").clone().collect();
+    //     let url_parts_len = url_parts.len();
+    //     let country = url_parts.get(url_parts_len - 1).unwrap();
+    //     let version = url_parts.get(url_parts_len - 2).unwrap();
+    //     &format!("./artifacts/{country}/{version}")
+    // };
+    let path = Path::new(path_name);
+    if path.try_exists()? {
+        return Ok(path);
+    }
+
+    let zip_path_name = format!("{path_name}.zip");
+    let zip_path = Path::new(&zip_path_name);
+    if zip_path.try_exists()? {
+        unzip(&zip_path, &path)?;
+        return Ok(path);
+    }
+
+    let response = reqwest::get(url).await?;
+    let mut file = match File::create(&zip_path) {
+        Err(e) => panic!("could not create file: {e}"),
+        Ok(file) => file,
+    };
+    let content = response.bytes().await?;
+    file.write_all(&content)?;
+
+    unzip(&zip_path, &path)?;
+    Ok(path)
+}
+
+fn unzip(zip_path: &Path, path: &Path) -> Result<(), Box<dyn Error>> {
+    let file = fs::File::open(zip_path)?;
+    let mut archive = ZipArchive::new(file).unwrap();
+    archive.extract(path)?;
+    fs::remove_file(zip_path)?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod test_artifact_download {
+    use super::*;
+
+    #[test]
+    fn my_test() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let result = download_artifact("https://bcartifacts-exdbf9fwegejdqak.b02.azurefd.net/sandbox/15.4.41023.43755/de", "./artifacts/de/15.4.41023.43755").await; // expected version to find = 15.4.41023.43755
+                match result {
+                    Ok(_) => println!("success"),
+                    Err(e) => panic!("unexpected error: {e}"),
+                };
+            })
+    }
+}
+// endregion download artifact
+
+// region get artifact url
 #[derive(Clone, Copy, PartialEq, PartialOrd, Ord, Eq)]
 struct Version {
     major: u32,
@@ -120,7 +196,7 @@ fn search_closest_available_version(
 }
 
 #[cfg(test)]
-mod tests {
+mod test_artifact_url_building {
     use super::*;
 
     #[test]
@@ -138,3 +214,4 @@ mod tests {
             })
     }
 }
+// endregion get artifact url
