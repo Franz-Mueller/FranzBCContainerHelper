@@ -1,11 +1,11 @@
 {
     "workbench.colorCustomizations": {
-        "activityBar.activeBackground": "#ea6032",
+        "activityBar.activeBachttps://github.com/kground": "#ea6032",
         "activityBar.background": "#ea6032",
         "activityBar.foreground": "#15202b",
         "activityBar.inactiveForeground": "#15202b99",
         "activityBarBadge.background": "#18e74c",
-        "activityBarBadge.foreground": "#f77f7f",
+        "activityBarBadge.foreground": "#15202b",
         "activityBarTop.activeBackground": "#ea6032",
         "activityBarTop.background": "#ea6032",
         "activityBarTop.foreground": "#15202b",
@@ -23,7 +23,8 @@
         "titleBar.activeBackground": "#d34516",
         "titleBar.activeForeground": "#e7e7e7",
         "titleBar.inactiveBackground": "#d3451699",
-        "titleBar.inactiveForeground": "#e7e7e799"
+        "titleBar.inactiveForeground": "#e7e7e799",
+        "activityBar.activeBackground": "#ea6032"
     },
     "peacock.color": "#d34516"
 }
