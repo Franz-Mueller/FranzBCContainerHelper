@@ -130,6 +130,8 @@ async fn build_bc_artifact_url(
 
     let version = get_best_bc_artifact_version(&country_index_url, version).await?;
 
+    let x: impl Drop = 5;
+
     Ok(format!("{base_url}/{version}/{country}"))
 }
 
