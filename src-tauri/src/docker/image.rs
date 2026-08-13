@@ -39,42 +39,110 @@ impl Manifest {
 
 pub async fn build_image(artifact_path: &Path, artifact_url: &str) {
     // TODO License
-    let manifest_path = format!("{}/{}", artifact_path.to_str().unwrap(), "manifest.json");
-    let manifest = Manifest::from_file(manifest_path);
+    let manifest = Manifest::from_file(artifact_path.join(Path::new("manifest.json")));
+    let build_folder = create_temp_build_folder(artifact_path, artifact_url, &manifest);
+    create_docker_image(manifest, build_folder).await;
+}
 
-    let temp_build_folder = format!("images/{}/{}", manifest.country, manifest.version);
-    let temp_build_folder = Path::new(&temp_build_folder);
-    fs::create_dir(temp_build_folder).unwrap(); // TODO check if Path exists in case deletion is not handled PROPERLY
+async fn create_docker_image(manifest: Manifest, build_folder: std::path::PathBuf) {
+    let docker = Docker::connect_with_local_defaults().unwrap();
+    let image_name = format!("bs{}winltsc2025:latest", manifest.version);
+    let options = BuildImageOptionsBuilder::default()
+        .dockerfile("dockerfile")
+        .t(&image_name)
+        .rm(true)
+        .build();
 
-    let temp_navdvd_folder = format!("{}/NAVDVD", temp_build_folder.to_str().unwrap());
-    let temp_navdvd_folder = Path::new(&temp_navdvd_folder);
-    fs::create_dir(temp_navdvd_folder).unwrap();
+    let tar_data = create_archive_from_build_folder(build_folder);
 
-    let dbpath =
-        format!("{}/{}", artifact_path.to_str().unwrap(), manifest.database).replace("\\", "/");
+    let mut stream = docker.build_image(options, None, Some(body_full(Bytes::from(tar_data))));
 
-    let commondata = if BcVersion::from_str(&manifest.version) < BcVersion::from_str("27.0.33344.0")
-    {
-        "CommonAppData"
-    } else {
-        "CommApp"
-    };
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(info) => {
+                println!("{info:?}");
+            }
+            Err(err) => {
+                eprintln!("Docker build failed: {err:?}");
+            }
+        }
+    }
+}
 
-    let demo_db_dir = format!(
-        "./{}/SQLDemoDatabase/{}/Microsoft/Microsoft Dynamics NAV/ver/Database",
-        temp_navdvd_folder.to_str().unwrap(),
-        commondata
+fn create_archive_from_build_folder(build_folder: std::path::PathBuf) -> Vec<u8> {
+    let mut archive = Builder::new(Vec::new());
+    archive.append_dir_all("", build_folder).unwrap();
+    archive.finish().unwrap();
+
+    let tar_data = archive.into_inner().unwrap();
+    tar_data
+}
+
+fn create_temp_build_folder(
+    artifact_path: &Path,
+    artifact_url: &str,
+    manifest: &Manifest,
+) -> std::path::PathBuf {
+    let build_folder = Path::new("images")
+        .join(&manifest.country)
+        .join(&manifest.version);
+    let navdvd_folder = build_folder.join("NAVDVD");
+
+    fs::create_dir_all(&build_folder).unwrap();
+    fs::create_dir(&navdvd_folder).unwrap();
+
+    populate_navdvd(artifact_path, manifest, navdvd_folder);
+
+    let dockerfile = File::create(build_folder.join("/dockerfile")).unwrap();
+
+    let base_image = "mcr.microsoft.com/businesscentral:ltsc2025-dev";
+    let datetime = Local::now().format("%Y%m%d%H%M").to_string();
+    let is_bc_sandbox = if manifest.isBcSandbox { "Y" } else { "N" };
+
+    write_dockerfile(
+        artifact_url,
+        manifest,
+        dockerfile,
+        base_image,
+        datetime,
+        is_bc_sandbox,
     );
+    build_folder
+}
 
-    fs::create_dir_all(&demo_db_dir).unwrap();
+fn write_dockerfile(
+    artifact_url: &str,
+    manifest: &Manifest,
+    mut dockerfile: File,
+    base_image: &str,
+    datetime: String,
+    is_bc_sandbox: &str,
+) {
+    writeln!(dockerfile, "FROM {}", base_image).unwrap();
+    writeln!(dockerfile, "ENV DatabaseServer=localhost DatabaseInstance=SQLEXPRESS DatabaseName=CRONUS IsBcSandbox={} artifactUrl={} filesOnly={}", is_bc_sandbox, artifact_url, false).unwrap();
+    writeln!(dockerfile, "").unwrap();
+    writeln!(dockerfile, "COPY NAVDVD /NAVDVD/").unwrap();
+    writeln!(dockerfile, "").unwrap();
+    writeln!(dockerfile, "RUN \\Run\\start.ps1 -installOnly").unwrap();
+    writeln!(dockerfile, "").unwrap();
+    writeln!(
+        dockerfile,
+        "LABEL legal=\"http://go.microsoft.com/fwlink/?LinkId=837447\" \\"
+    )
+    .unwrap();
+    writeln!(dockerfile, "      created=\"{}\" \\", datetime).unwrap();
+    writeln!(dockerfile, "      nav=\"{}\" \\", manifest.nav).unwrap();
+    // TODO make this section more linux friendly
+    writeln!(dockerfile, "      cu=\"{}\" \\", manifest.cu).unwrap();
+    writeln!(dockerfile, "      country=\"{}\" \\", manifest.country).unwrap();
+    writeln!(dockerfile, "      version=\"{}\" \\", manifest.version).unwrap();
+    writeln!(dockerfile, "      platform=\"{}\"", manifest.platform).unwrap();
+}
 
-    let demo_db_path = format!("{}/database.bak", demo_db_dir);
+fn populate_navdvd(artifact_path: &Path, manifest: &Manifest, navdvd_folder: std::path::PathBuf) {
+    copy_demo_db_into_navdvd(&navdvd_folder, artifact_path, manifest);
 
-    dbg!(&dbpath);
-    dbg!(&demo_db_path);
-
-    fs::copy(&dbpath, &demo_db_path).unwrap();
-
+    // Copies files required for build from artifact folder into build folder
     for entry in artifact_path.read_dir().unwrap() {
         match entry {
             Ok(entry) => {
@@ -89,83 +157,41 @@ pub async fn build_image(artifact_path: &Path, artifact_url: &str) {
                 .contains(&file_name.to_str().unwrap())
                     || file_name.to_str().unwrap().starts_with("Applications")
                 {
-                    dbg!(&file_name);
-                    let destination = format!(
-                        "{}/{}",
-                        temp_navdvd_folder.to_str().unwrap(),
-                        file_name.into_string().unwrap()
-                    );
-                    println!("entry: {entry:?} | destination: {destination:?}");
+                    let destination = navdvd_folder.join(file_name);
                     if entry.path().is_dir() {
                         copy_dir_all(entry.path(), destination).unwrap();
                     } else {
                         fs::copy(entry.path(), &destination).unwrap();
                     }
                 }
-                println!("{:?}", entry.path());
             }
             Err(e) => panic!("{e}"),
         }
     }
+}
 
-    let mut dockerfile = File::create(format!(
-        "{}/dockerfile",
-        temp_build_folder.to_str().unwrap()
-    ))
-    .unwrap();
+fn copy_demo_db_into_navdvd(navdvd_folder: &Path, artifact_path: &Path, manifest: &Manifest) {
+    let db_path = artifact_path.join(manifest.database.replace("\\", "/"));
+    let commondata = if BcVersion::from_str(&manifest.version) < BcVersion::from_str("27.0.33344.0")
+    {
+        "CommonAppData"
+    } else {
+        "CommApp"
+    };
 
-    let base_image = "mcr.microsoft.com/businesscentral:ltsc2025-dev";
-    let datetime = Local::now().format("%Y%m%d%H%M").to_string();
-    let is_bc_sandbox = if manifest.isBcSandbox { "Y" } else { "N" };
+    let demo_db_dir = navdvd_folder
+        .join("SQLDemoDatabase")
+        .join(commondata)
+        .join("Microsoft")
+        .join("Microsoft Dynamics NAV")
+        .join("ver")
+        .join("Database");
 
-    writeln!(dockerfile, "FROM {}", base_image).unwrap();
-    writeln!(dockerfile, "ENV DatabaseServer=localhost DatabaseInstance=SQLEXPRESS DatabaseName=CRONUS IsBcSandbox={} artifactUrl={} filesOnly={}", is_bc_sandbox, artifact_url, false).unwrap();
-    writeln!(dockerfile, "").unwrap();
-    writeln!(dockerfile, "COPY NAVDVD /NAVDVD/").unwrap();
-    writeln!(dockerfile, "").unwrap();
-    writeln!(dockerfile, "RUN \\Run\\start.ps1 -installOnly").unwrap();
-    writeln!(dockerfile, "").unwrap();
-    writeln!(
-        dockerfile,
-        "LABEL legal=\"http://go.microsoft.com/fwlink/?LinkId=837447\" \\"
-    )
-    .unwrap();
-    writeln!(dockerfile, "      created=\"{}\" \\", datetime).unwrap();
-    writeln!(dockerfile, "      nav=\"{}\" \\", manifest.nav).unwrap(); // TODO make this section more linux friendly
-    writeln!(dockerfile, "      cu=\"{}\" \\", manifest.cu).unwrap();
-    writeln!(dockerfile, "      country=\"{}\" \\", manifest.country).unwrap();
-    writeln!(dockerfile, "      version=\"{}\" \\", manifest.version).unwrap();
-    writeln!(dockerfile, "      platform=\"{}\"", manifest.platform).unwrap();
+    fs::create_dir_all(&demo_db_dir).unwrap();
 
-    let docker = Docker::connect_with_local_defaults().unwrap();
+    let demo_db_path = demo_db_dir.join("database.bak");
 
-    let image_name = format!("bs{}winltsc2025:latest", manifest.version);
-
-    let options = BuildImageOptionsBuilder::default()
-        .dockerfile("dockerfile")
-        .t(&image_name)
-        .rm(true)
-        .build();
-
-    let mut archive = Builder::new(Vec::new());
-    archive.append_dir_all("", temp_build_folder).unwrap();
-    archive.finish().unwrap();
-
-    let tar_data = archive.into_inner().unwrap();
-
-    // `tar_data` must contain your Docker build context as a tar archive.
-    let mut stream = docker.build_image(options, None, Some(body_full(Bytes::from(tar_data))));
-
-    while let Some(result) = stream.next().await {
-        match result {
-            Ok(info) => {
-                println!("{info:?}");
-            }
-            Err(err) => {
-                eprintln!("Docker build failed: {err:?}");
-            }
-        }
-    }
+    fs::copy(&db_path, &demo_db_path).unwrap();
 }
 
 #[cfg(test)]
