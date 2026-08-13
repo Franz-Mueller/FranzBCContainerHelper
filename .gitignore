@@ -56,3 +56,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# vite press
+docs/.vitepress/dist
+docs/.vitepress/cache
