@@ -155,7 +155,7 @@ mod test_build_image {
             .build()
             .unwrap()
             .block_on(async {
-                let p = Path::new("/home/franz/Repos/FranzBCContainerHelper/src-tauri/artifacts/de/15.4.41023.43755");
+                let p = Path::new("./artifacts/de/15.4.41023.43755");
                 let u = "https://bcartifacts-exdbf9fwegejdqak.b02.azurefd.net/sandbox/15.4.41023.43755/de";
                 build_image(p, u).await;
             })
