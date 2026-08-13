@@ -1,3 +1,4 @@
+use crate::utils::file_handling::copy_dir_all;
 use bollard::{body_full, query_parameters::BuildImageOptionsBuilder, Docker};
 use bytes::Bytes;
 use chrono::Local;
@@ -36,14 +37,50 @@ impl Manifest {
 }
 
 pub async fn build_image(artifact_path: &Path, artifact_url: &str) {
+    // TODO License
     let manifest_path = format!("{}/{}", artifact_path.to_str().unwrap(), "manifest.json");
     let manifest = Manifest::from_file(manifest_path);
 
     let temp_build_folder = format!("images/{}/{}", manifest.country, manifest.version);
     let temp_build_folder = Path::new(&temp_build_folder);
-    // TODO check if PAth exists in case deletion is not handled PROPERLY
-    if !temp_build_folder.try_exists().unwrap() {
-        fs::create_dir(temp_build_folder).unwrap();
+    fs::create_dir(temp_build_folder).unwrap(); // TODO check if Path exists in case deletion is not handled PROPERLY
+
+    let temp_navdvd_folder = format!("{}/NAVDVD", temp_build_folder.to_str().unwrap());
+    let temp_navdvd_folder = Path::new(&temp_navdvd_folder);
+    fs::create_dir(temp_navdvd_folder).unwrap();
+
+    for entry in artifact_path.read_dir().unwrap() {
+        match entry {
+            Ok(entry) => {
+                let file_name = entry.file_name();
+                if [
+                    "Installers",
+                    "ConfigurationPackages",
+                    "TestToolKit",
+                    "UpgradeToolKit",
+                    "Extensions",
+                    &manifest.database.to_string(),
+                ]
+                .contains(&file_name.to_str().unwrap())
+                    || file_name.to_str().unwrap().starts_with("Applications")
+                {
+                    dbg!(&file_name);
+                    let destination = format!(
+                        "{}/{}",
+                        temp_build_folder.to_str().unwrap(),
+                        file_name.into_string().unwrap()
+                    );
+                    println!("entry: {entry:?} | destination: {destination:?}");
+                    if entry.path().is_dir() {
+                        copy_dir_all(entry.path(), destination).unwrap();
+                    } else {
+                        fs::copy(entry.path(), &destination).unwrap();
+                    }
+                }
+                println!("{:?}", entry.path());
+            }
+            Err(e) => panic!("{e}"),
+        }
     }
 
     let mut dockerfile = File::create(format!(
@@ -61,7 +98,6 @@ pub async fn build_image(artifact_path: &Path, artifact_url: &str) {
     writeln!(dockerfile, "").unwrap();
     writeln!(dockerfile, "COPY my /run/").unwrap();
     writeln!(dockerfile, "COPY NAVDVD /NAVDVD/").unwrap();
-    writeln!(dockerfile, "$DockerFileAddFonts").unwrap(); // TODO $DockerFileAddFonts
     writeln!(dockerfile, "").unwrap();
     writeln!(dockerfile, "RUN \\Run\\start.ps1 -installOnly").unwrap();
     writeln!(dockerfile, "").unwrap();
@@ -79,9 +115,11 @@ pub async fn build_image(artifact_path: &Path, artifact_url: &str) {
 
     let docker = Docker::connect_with_local_defaults().unwrap();
 
+    let image_name = format!("bs{}winltsc2025:latest", manifest.version);
+
     let options = BuildImageOptionsBuilder::default()
         .dockerfile("dockerfile")
-        .t("my-image:latest")
+        .t(&image_name)
         .rm(true)
         .build();
 
@@ -118,7 +156,8 @@ mod test_build_image {
             .unwrap()
             .block_on(async {
                 let p = Path::new("/home/franz/Repos/FranzBCContainerHelper/src-tauri/artifacts/de/15.4.41023.43755");
-                build_image(p).await;
+                let u = "https://bcartifacts-exdbf9fwegejdqak.b02.azurefd.net/sandbox/15.4.41023.43755/de";
+                build_image(p, u).await;
             })
     }
 }

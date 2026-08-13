@@ -1,6 +1,7 @@
 use self::docker::container::{get_version, list_containers};
 use tauri_plugin_sql::{Migration, MigrationKind};
 mod docker;
+mod utils;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]

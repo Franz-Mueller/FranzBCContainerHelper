@@ -1,3 +1,4 @@
+use crate::utils::bc_version::BcVersion;
 use reqwest;
 use std::collections::HashMap;
 use std::error::Error;
@@ -82,34 +83,6 @@ mod test_artifact_download {
 // endregion download artifact
 
 // region get artifact url
-#[derive(Clone, Copy, PartialEq, PartialOrd, Ord, Eq)]
-struct Version {
-    major: u32,
-    minor: u32,
-    build: u32,
-    revision: u32,
-}
-
-impl Version {
-    fn new(version: &str) -> Version {
-        let v: Vec<&str> = version.split(".").collect();
-
-        Version {
-            major: v[0].parse().unwrap(),
-            minor: v[1].parse().unwrap(),
-            build: v[2].parse().unwrap(),
-            revision: v[3].parse().unwrap(),
-        }
-    }
-
-    fn get_version_string(&self) -> String {
-        format!(
-            "{}.{}.{}.{}",
-            self.major, self.minor, self.build, self.revision
-        )
-    }
-}
-
 /// Returns a artifact url.
 /// If the provided version isn't available, it will look for the closest version within the major.
 /// This means another minor, build or revision could be choosen.
@@ -121,7 +94,7 @@ async fn build_bc_artifact_url(
     if !["sandbox", "onprem"].contains(&deployment_type) {
         return Err("cannot build artifact url, deployment type not valid".into());
     }
-    let version = Version::new(version);
+    let version = BcVersion::from_str(version);
 
     let storage_account = "bcartifacts-exdbf9fwegejdqak.b02.azurefd.net".to_string();
 
@@ -130,14 +103,12 @@ async fn build_bc_artifact_url(
 
     let version = get_best_bc_artifact_version(&country_index_url, version).await?;
 
-    let x: impl Drop = 5;
-
     Ok(format!("{base_url}/{version}/{country}"))
 }
 
 async fn get_best_bc_artifact_version(
     country_index_url: &str,
-    searched_version: Version,
+    searched_version: BcVersion,
 ) -> Result<String, Box<dyn Error>> {
     let body = reqwest::get(country_index_url).await?.text().await?;
     // Data is expected to arrive in this format:
@@ -145,27 +116,27 @@ async fn get_best_bc_artifact_version(
     // {"Version":"16.0.11240.31204","CreationTime":"2021-10-11T08:49:00Z"}]
     let version_data: Vec<HashMap<String, String>> = serde_json::from_str(&body)?; // IDEA Cache?
 
-    let available_versions: Vec<Version> = extract_available_versions(version_data);
-    let closest_available_version: Version =
+    let available_versions: Vec<BcVersion> = extract_available_versions(version_data);
+    let closest_available_version: BcVersion =
         search_closest_available_version(&searched_version, available_versions);
 
     Ok(closest_available_version.get_version_string())
 }
 
-fn extract_available_versions(version_data: Vec<HashMap<String, String>>) -> Vec<Version> {
+fn extract_available_versions(version_data: Vec<HashMap<String, String>>) -> Vec<BcVersion> {
     // TODO solve with map
-    let mut available_versions: Vec<Version> = Vec::new();
+    let mut available_versions: Vec<BcVersion> = Vec::new();
     for d in version_data.iter() {
-        available_versions.push(Version::new(d.get(&"Version".to_string()).unwrap()));
+        available_versions.push(BcVersion::from_str(d.get(&"Version".to_string()).unwrap()));
     }
     available_versions
 }
 
 // IDEA Provide Setting on how strict to be with version selection
 fn search_closest_available_version(
-    searched_version: &Version,
-    mut available_versions: Vec<Version>,
-) -> Version {
+    searched_version: &BcVersion,
+    mut available_versions: Vec<BcVersion>,
+) -> BcVersion {
     if available_versions.contains(searched_version) {
         return *searched_version;
     }
