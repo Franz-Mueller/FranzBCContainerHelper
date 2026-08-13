@@ -1,6 +1,6 @@
 {
     "workbench.colorCustomizations": {
-        "activityBar.activeBachttps://github.com/kground": "#ea6032",
+        "activityBar.activeBackground": "#ea6032",
         "activityBar.background": "#ea6032",
         "activityBar.foreground": "#15202b",
         "activityBar.inactiveForeground": "#15202b99",
@@ -23,8 +23,7 @@
         "titleBar.activeBackground": "#d34516",
         "titleBar.activeForeground": "#e7e7e7",
         "titleBar.inactiveBackground": "#d3451699",
-        "titleBar.inactiveForeground": "#e7e7e799",
-        "activityBar.activeBackground": "#ea6032"
+        "titleBar.inactiveForeground": "#e7e7e799"
     },
     "peacock.color": "#d34516"
 }
