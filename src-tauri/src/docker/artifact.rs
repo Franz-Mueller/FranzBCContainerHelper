@@ -16,7 +16,7 @@ use zip::ZipArchive;
 /// Returns the path to the requestet artifact.
 /// If the path allready exists in cache the download is skipped.
 /// The path should be in format: ./artifacts/{country}/{version}
-async fn download_artifact<'a>(
+pub async fn download_artifact<'a>(
     url: &'a str,
     path_name: &'a str,
 ) -> Result<&'a Path, Box<dyn Error>> {
@@ -86,7 +86,7 @@ mod test_artifact_download {
 /// Returns a artifact url.
 /// If the provided version isn't available, it will look for the closest version within the major.
 /// This means another minor, build or revision could be choosen.
-async fn build_bc_artifact_url(
+pub async fn build_bc_artifact_url(
     deployment_type: &str,
     version: &str,
     country: &str,

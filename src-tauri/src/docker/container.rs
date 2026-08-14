@@ -1,17 +1,12 @@
+use crate::docker::{
+    artifact::{build_bc_artifact_url, download_artifact},
+    image::build_image,
+};
+
 use bollard::query_parameters::ListContainersOptionsBuilder;
 use bollard::Docker;
 
 #[tauri::command]
-pub async fn get_version() {
-    let docker = Docker::connect_with_local_defaults().unwrap();
-    let version = docker.version().await.unwrap();
-    dbg!(version);
-}
-
-#[tauri::command]
-pub async fn list_containers() {
-    let docker = Docker::connect_with_local_defaults().unwrap();
-    let params = ListContainersOptionsBuilder::new().all(true).build();
-    let containers = docker.list_containers(Some(params)).await.unwrap();
-    dbg!(containers);
+pub async fn create_container() {
+    let artifact_url = build_bc_artifact_url("sandbox");
 }

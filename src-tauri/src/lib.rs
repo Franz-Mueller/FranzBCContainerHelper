@@ -1,4 +1,4 @@
-use self::docker::container::{get_version, list_containers};
+use self::docker::container::create_container;
 use tauri_plugin_sql::{Migration, MigrationKind};
 mod docker;
 mod utils;
@@ -25,11 +25,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![
-            greet,
-            get_version,
-            list_containers
-        ])
+        .invoke_handler(tauri::generate_handler![greet, create_container])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
