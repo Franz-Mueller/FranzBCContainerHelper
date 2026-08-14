@@ -2,8 +2,8 @@ import { defineConfig } from 'vitepress'
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
-  title: "Franz BC Container Helper",
-  description: "Documentation for Franz BC Container Helper",
+  title: "Franz BC Dev Helper",
+  description: "Documentation for Franz BC Dev Helper",
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
     nav: [
@@ -22,7 +22,7 @@ export default defineConfig({
     ],
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/Franz-Mueller/FranzBCContainerHelper' }
+      { icon: 'github', link: 'https://github.com/Franz-Mueller/FranzBCDevHelper' }
     ]
   }
 })

@@ -3,7 +3,7 @@
 layout: home
 
 hero:
-  name: "Franz BC Container Helper"
+  name: "Franz BC Dev Helper"
   text: "End User Documentation"
   tagline: An opinionated approach on developing BC apps
   actions:
