@@ -1,4 +1,4 @@
-use crate::utils::bc_version::BcVersion;
+use crate::bc::version::BcVersion;
 use crate::utils::file_handling::copy_dir_all;
 use bollard::{body_full, query_parameters::BuildImageOptionsBuilder, Docker};
 use bytes::Bytes;

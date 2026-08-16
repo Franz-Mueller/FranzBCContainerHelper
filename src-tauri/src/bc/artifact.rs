@@ -1,4 +1,4 @@
-use crate::utils::bc_version::{BcVersion, BcVersionError};
+use crate::bc::version::{BcVersion, BcVersionError};
 use reqwest::{self, StatusCode};
 use serde::Deserialize;
 use std::fs;
@@ -7,8 +7,6 @@ use tokio::io::AsyncWriteExt;
 use url::Url;
 use zip::ZipArchive;
 
-// TODO Refactoring
-// TODO Error Handling
 // TODO Testing
 // TODO implement function that checks if country and deployment type are valid to prevent creating of wrong paths
 // TODO Concurrent resolve() calls can corrupt each other

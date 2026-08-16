@@ -1,15 +1,6 @@
-use crate::utils::file_handling::get_data_dir;
+use crate::bc::artifact::{BcArtifact, BcArtifactRequest};
 use crate::AppState;
-use crate::{
-    docker::{
-        artifact::{ArtifactResolver, BcArtifact, BcArtifactRequest},
-        image::build_image,
-    },
-    utils::bc_version::BcVersion,
-};
-use bollard::query_parameters::ListContainersOptionsBuilder;
-use bollard::Docker;
-use std::error::Error;
+use crate::{bc::version::BcVersion, docker::image::build_image};
 use std::str::FromStr;
 use tauri::State;
 

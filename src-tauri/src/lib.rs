@@ -1,8 +1,9 @@
-use self::docker::artifact::ArtifactResolver;
+use self::bc::artifact::ArtifactResolver;
 use self::docker::container::create_container;
 use futures_util::future::join;
 use serde::de;
 use tauri_plugin_sql::{Migration, MigrationKind};
+mod bc;
 mod docker;
 mod utils;
 use serde::{Deserialize, Serialize};
