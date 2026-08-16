@@ -11,14 +11,24 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tar::Builder;
 
-// TODO Refactoring
-// TODO Error Handling
 // TODO Testing
+// TODO Stream Docker build context instead of loading the complete tar archive into memory
+// TODO Move recursive directory copying off the async runtime
+// TODO Handle Docker connection errors instead of unwrapping in ImageBuilder::new
+
+static BUILD_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub struct BcImage {
     id: String,
+}
+
+impl BcImage {
+    pub fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 pub struct ImageBuilder {
@@ -39,14 +49,35 @@ impl ImageBuilder {
             artifact.version(),
             artifact.country()
         );
-        let build_folder = self.build_path.join(&image_name);
-        if !tokio::fs::try_exists(&build_folder).await? {
-            tokio::fs::create_dir_all(&build_folder).await?;
+
+        let build_folder_name = format!(
+            "{}-{}-{}",
+            image_name.strip_suffix(":latest").unwrap_or(&image_name),
+            std::process::id(),
+            BUILD_COUNTER.fetch_add(1, Ordering::Relaxed)
+        );
+
+        let build_folder = self.build_path.join(build_folder_name);
+
+        tokio::fs::create_dir_all(&build_folder).await?;
+
+        let result = async {
+            self.populate_build_folder(&build_folder, artifact).await?;
+            let tar_data = self.compress(&build_folder).await?;
+            self.execute_docker_build(tar_data, &image_name).await
         }
-        self.populate_build_folder(&build_folder, &artifact).await?;
-        let tar_data = self.compress(&build_folder).await?;
-        let image_id = self.execute_docker_build(tar_data, &image_name).await?;
-        Ok(BcImage { id: image_id })
+        .await;
+
+        match result {
+            Ok(image_id) => {
+                tokio::fs::remove_dir_all(&build_folder).await?;
+                Ok(BcImage { id: image_id })
+            }
+            Err(error) => {
+                let _ = tokio::fs::remove_dir_all(&build_folder).await;
+                Err(error)
+            }
+        }
     }
 
     async fn populate_build_folder(
@@ -54,11 +85,11 @@ impl ImageBuilder {
         build_folder: &Path,
         artifact: &BcArtifact,
     ) -> Result<(), ImageError> {
-        let manifest = Manifest::from_file(artifact.path());
+        let manifest = Manifest::from_file(artifact.path().join("manifest.json"))?;
         let navdvd = build_folder.join("NAVDVD");
         tokio::fs::create_dir(&navdvd).await?;
         self.populate_navdvd(&navdvd, artifact, &manifest).await?;
-        self.create_dockerfile(&build_folder, &artifact, &manifest)
+        self.create_dockerfile(build_folder, artifact, &manifest)
             .await?;
         Ok(())
     }
@@ -69,12 +100,15 @@ impl ImageBuilder {
         artifact: &BcArtifact,
         manifest: &Manifest,
     ) -> Result<(), ImageError> {
-        self.copy_demo_db_into_navdvd(&navdvd_folder, artifact.path(), manifest);
+        self.copy_demo_db_into_navdvd(navdvd_folder, artifact.path(), manifest)
+            .await?;
 
         for entry in artifact.path().read_dir()? {
             match entry {
                 Ok(entry) => {
                     let file_name = entry.file_name();
+                    let file_name_str = file_name.to_string_lossy();
+
                     if [
                         "Installers",
                         "ConfigurationPackages",
@@ -82,8 +116,8 @@ impl ImageBuilder {
                         "UpgradeToolKit",
                         "Extensions",
                     ]
-                    .contains(&file_name.to_str().unwrap()) // TODO
-                        || tokio::fs::read_to_string(&file_name).await?.starts_with("Applications")
+                    .contains(&file_name_str.as_ref())
+                        || file_name_str.starts_with("Applications")
                     {
                         let destination = navdvd_folder.join(&file_name);
                         if entry.path().is_dir() {
@@ -93,7 +127,7 @@ impl ImageBuilder {
                         }
                     }
                 }
-                Err(e) => panic!("{e}"), // TODO Error
+                Err(e) => return Err(ImageError::Io(e)),
             }
         }
         Ok(())
@@ -143,11 +177,11 @@ impl ImageBuilder {
 
         self.populate_dockerfile(
             dockerfile,
-            &artifact,
-            &manifest,
-            &base_image,
+            artifact,
+            manifest,
+            base_image,
             datetime,
-            &is_bc_sandbox,
+            is_bc_sandbox,
         )
         .await?;
         Ok(())
@@ -184,11 +218,18 @@ impl ImageBuilder {
     }
 
     async fn compress(&self, build_folder: &Path) -> Result<Vec<u8>, ImageError> {
-        let mut archive = Builder::new(Vec::new());
-        archive.append_dir_all("", build_folder)?;
-        archive.finish()?;
+        let build_folder = build_folder.to_path_buf();
 
-        let tar_data = archive.into_inner()?;
+        let tar_data = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, std::io::Error> {
+            let mut archive = Builder::new(Vec::new());
+            archive.append_dir_all("", build_folder)?;
+            archive.finish()?;
+
+            let tar_data = archive.into_inner()?;
+            Ok(tar_data)
+        })
+        .await??;
+
         Ok(tar_data)
     }
 
@@ -199,7 +240,7 @@ impl ImageBuilder {
     ) -> Result<String, ImageError> {
         let options = BuildImageOptionsBuilder::default()
             .dockerfile("dockerfile")
-            .t(&image_name)
+            .t(image_name)
             .rm(true)
             .build();
 
@@ -215,7 +256,16 @@ impl ImageBuilder {
                 Err(err) => return Err(ImageError::DockerBuildFailed(err)),
             }
         }
-        Ok(String::from("LOL"))
+
+        let image = self
+            .docker
+            .inspect_image(image_name)
+            .await
+            .map_err(ImageError::DockerBuildFailed)?;
+
+        image
+            .id
+            .ok_or_else(|| ImageError::MissingImageId(image_name.to_string()))
     }
 }
 
@@ -236,12 +286,12 @@ struct Manifest {
 }
 
 impl Manifest {
-    fn from_file<P>(path: P) -> Manifest
+    fn from_file<P>(path: P) -> Result<Manifest, ImageError>
     where
         P: AsRef<Path>,
     {
-        let data = fs::read_to_string(path).expect("Should have been able to read the file");
-        serde_json::from_str(&data).unwrap()
+        let data = fs::read_to_string(path)?;
+        Ok(serde_json::from_str(&data)?)
     }
 }
 
@@ -253,6 +303,15 @@ pub enum ImageError {
     #[error("invalid BC version: {0}")]
     Version(#[from] BcVersionError),
 
+    #[error("invalid artifact manifest: {0}")]
+    Manifest(#[from] serde_json::Error),
+
+    #[error("background task failed: {0}")]
+    Task(#[from] tokio::task::JoinError),
+
     #[error("building docker image failed: {0}")]
     DockerBuildFailed(bollard::errors::Error),
+
+    #[error("docker image {0} does not have an image ID")]
+    MissingImageId(String),
 }
