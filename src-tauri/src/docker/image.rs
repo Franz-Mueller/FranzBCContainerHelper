@@ -1,3 +1,4 @@
+use crate::bc::artifact::BcArtifact;
 use crate::bc::version::BcVersion;
 use crate::utils::file_handling::copy_dir_all;
 use bollard::{body_full, query_parameters::BuildImageOptionsBuilder, Docker};
@@ -8,12 +9,60 @@ use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::Path;
+use std::path::PathBuf;
 use std::str::FromStr;
 use tar::Builder;
 
 // TODO Refactoring
 // TODO Error Handling
 // TODO Testing
+
+pub struct ImageBuilder {
+    docker: Docker,
+    build_path: PathBuf,
+}
+
+impl ImageBuilder {
+    pub fn new(build_path: PathBuf) -> Self {
+        let docker = Docker::connect_with_local_defaults().unwrap();
+        Self { docker, build_path }
+    }
+
+    pub async fn build(&self, artifact: &BcArtifact) -> Result<BcImage, ImageError> {
+        let build_folder = self
+            .build_path
+            .join(artifact.deployment_type())
+            .join(artifact.version().to_string())
+            .join(artifact.country());
+        self.populate_build_folder(&build_folder).await?;
+        let build_archive = self.compress(&build_folder).await?;
+        let image_id = self.execute_docker_build(&build_archive).await?;
+        Ok(BcImage { id: image_id })
+    }
+
+    async fn populate_build_folder(&self, build_folder: &Path) -> Result<(), ImageError> {
+        Ok(())
+    }
+
+    async fn compress(&self, build_folder: &Path) -> Result<&Path, ImageError> {
+        Ok(Path::new(""))
+    }
+
+    async fn execute_docker_build(&self, build_archive: &Path) -> Result<String, ImageError> {
+        Ok(String::from("LOL"))
+    }
+}
+
+pub struct BcImage {
+    id: String,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ImageError {}
+
+// ##############
+// old code
+// ##############
 
 #[derive(Deserialize, Serialize, Debug)]
 struct Manifest {
@@ -194,22 +243,4 @@ fn copy_demo_db_into_navdvd(navdvd_folder: &Path, artifact_path: &Path, manifest
     let demo_db_path = demo_db_dir.join("database.bak");
 
     fs::copy(&db_path, &demo_db_path).unwrap();
-}
-
-#[cfg(test)]
-mod test_build_image {
-    use super::*;
-
-    #[test]
-    fn my_test() {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-                let p = Path::new("./artifacts/de/15.4.41023.43755");
-                let u = "https://bcartifacts-exdbf9fwegejdqak.b02.azurefd.net/sandbox/15.4.41023.43755/de";
-                build_image(p, u).await;
-            })
-    }
 }

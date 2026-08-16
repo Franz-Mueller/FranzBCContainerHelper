@@ -1,17 +1,17 @@
 use self::bc::artifact::ArtifactResolver;
 use self::docker::container::create_container;
-use futures_util::future::join;
-use serde::de;
-use tauri_plugin_sql::{Migration, MigrationKind};
-mod bc;
-mod docker;
-mod utils;
+use self::docker::image::ImageBuilder;
+
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs::create_dir_all;
-use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use tauri::image::Image;
+use tauri_plugin_sql::{Migration, MigrationKind};
+
+mod bc;
+mod docker;
+mod utils;
 
 fn get_base_path() -> PathBuf {
     // TODO enable user to configure custom data store location
@@ -42,6 +42,7 @@ pub struct ApplicationBasePaths {
     artifacts_cache: PathBuf,
     projects: PathBuf,
     dependencies_cache: PathBuf,
+    image_build: PathBuf,
 }
 
 impl ApplicationBasePaths {
@@ -62,11 +63,16 @@ impl ApplicationBasePaths {
         if !dependencies_cache.try_exists().unwrap() {
             create_dir_all(&dependencies_cache).unwrap();
         }
+        let image_build: PathBuf = base_path.join("image_build");
+        if !image_build.try_exists().unwrap() {
+            create_dir_all(&image_build).unwrap();
+        }
         ApplicationBasePaths {
             base_path: base_path,
             artifacts_cache: artifacts_cache,
             projects: projects,
             dependencies_cache: dependencies_cache,
+            image_build: image_build,
         }
     }
 }
@@ -75,16 +81,19 @@ impl ApplicationBasePaths {
 pub struct AppState {
     application_base_paths: ApplicationBasePaths,
     artifact_resolver: ArtifactResolver,
+    image_builder: ImageBuilder,
 }
 
 impl Default for AppState {
     fn default() -> Self {
         let application_base_paths = ApplicationBasePaths::new();
         let artifact_cache_path = application_base_paths.artifacts_cache.clone();
+        let image_build_path = application_base_paths.image_build.clone();
 
         Self {
             application_base_paths: application_base_paths,
             artifact_resolver: ArtifactResolver::new(artifact_cache_path),
+            image_builder: ImageBuilder::new(image_build_path),
         }
     }
 }
