@@ -1,7 +1,9 @@
 use std::env;
+use std::error::Error;
 use std::path::Path;
 use std::path::PathBuf;
 use std::{fs, io};
+use zip::ZipArchive;
 
 pub fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> io::Result<()> {
     fs::create_dir_all(&dst)?;

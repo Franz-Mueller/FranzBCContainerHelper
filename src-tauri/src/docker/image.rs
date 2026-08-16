@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::Path;
+use std::str::FromStr;
 use tar::Builder;
 
 // TODO Refactoring
@@ -172,7 +173,8 @@ fn populate_navdvd(artifact_path: &Path, manifest: &Manifest, navdvd_folder: std
 
 fn copy_demo_db_into_navdvd(navdvd_folder: &Path, artifact_path: &Path, manifest: &Manifest) {
     let db_path = artifact_path.join(manifest.database.replace("\\", "/"));
-    let commondata = if BcVersion::from_str(&manifest.version) < BcVersion::from_str("27.0.33344.0")
+    let commondata = if BcVersion::from_str(&manifest.version).unwrap()
+        < BcVersion::from_str("27.0.33344.0").unwrap()
     {
         "CommonAppData"
     } else {

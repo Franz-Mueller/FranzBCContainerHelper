@@ -1,190 +1,297 @@
-use crate::utils::bc_version::BcVersion;
-use reqwest;
-use std::collections::HashMap;
-use std::error::Error;
+use crate::utils::bc_version::{BcVersion, BcVersionError};
+use reqwest::{self, StatusCode};
+use serde::Deserialize;
 use std::fs;
-use std::fs::File;
-use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use tokio::io::AsyncWriteExt;
+use url::Url;
 use zip::ZipArchive;
 
 // TODO Refactoring
 // TODO Error Handling
 // TODO Testing
+// TODO implement function that checks if country and deployment type are valid to prevent creating of wrong paths
+// TODO Concurrent resolve() calls can corrupt each other
 
-// region download artifact
-/// Returns the path to the requestet artifact.
-/// If the path allready exists in cache the download is skipped.
-/// The path should be in format: ./artifacts/{country}/{version}
-pub async fn download_artifact<'a>(
-    url: &'a str,
-    path_name: &'a str,
-) -> Result<&'a Path, Box<dyn Error>> {
-    // IDEA Check path before downloading in case the desired version is in cache but cannot be found in the index
-    // TODO move into container creation function. could be solved otherwise, but later the container function should manage cache interaction anyways
-    // path_name = {
-    //     let url_parts: Vec<&str> = url.split("/").clone().collect();
-    //     let url_parts_len = url_parts.len();
-    //     let country = url_parts.get(url_parts_len - 1).unwrap();
-    //     let version = url_parts.get(url_parts_len - 2).unwrap();
-    //     &format!("./artifacts/{country}/{version}")
-    // };
-    let path = Path::new(path_name);
-    if path.try_exists()? {
-        return Ok(path);
-    }
-
-    let zip_path_name = format!("{path_name}.zip");
-    let zip_path = Path::new(&zip_path_name);
-    if zip_path.try_exists()? {
-        unzip(&zip_path, &path)?;
-        return Ok(path);
-    }
-
-    let response = reqwest::get(url).await?;
-    let mut file = match File::create(&zip_path) {
-        Err(e) => panic!("could not create file: {e}"),
-        Ok(file) => file,
-    };
-    let content = response.bytes().await?;
-    file.write_all(&content)?;
-
-    unzip(&zip_path, &path)?;
-    Ok(path)
+pub struct BcArtifactRequest {
+    pub deployment_type: String,
+    pub version: BcVersion,
+    pub country: String,
 }
 
-fn unzip(zip_path: &Path, path: &Path) -> Result<(), Box<dyn Error>> {
-    let file = fs::File::open(zip_path)?;
-    let mut archive = ZipArchive::new(file).unwrap();
-    archive.extract(path)?;
-    fs::remove_file(zip_path)?;
-    Ok(())
+pub struct ArtifactResolver {
+    client: reqwest::Client,
+    base_url: Url,
+    cache_path: PathBuf,
 }
 
-#[cfg(test)]
-mod test_artifact_download {
-    use super::*;
-
-    #[test]
-    fn my_test() {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-                let result = download_artifact("https://bcartifacts-exdbf9fwegejdqak.b02.azurefd.net/sandbox/15.4.41023.43755/de", "./artifacts/de/15.4.41023.43755").await; // expected version to find = 15.4.41023.43755
-                match result {
-                    Ok(_) => println!("success"),
-                    Err(e) => panic!("unexpected error: {e}"),
-                };
-            })
-    }
-}
-// endregion download artifact
-
-// region get artifact url
-/// Returns a artifact url.
-/// If the provided version isn't available, it will look for the closest version within the major.
-/// This means another minor, build or revision could be choosen.
-pub async fn build_bc_artifact_url(
-    deployment_type: &str,
-    version: &str,
-    country: &str,
-) -> Result<String, Box<dyn Error>> {
-    if !["sandbox", "onprem"].contains(&deployment_type) {
-        return Err("cannot build artifact url, deployment type not valid".into());
-    }
-    let version = BcVersion::from_str(version);
-
-    let storage_account = "bcartifacts-exdbf9fwegejdqak.b02.azurefd.net".to_string();
-
-    let base_url = format!("https://{storage_account}/{deployment_type}");
-    let country_index_url = format!("{base_url}/indexes/{country}.json");
-
-    let version = get_best_bc_artifact_version(&country_index_url, version).await?;
-
-    Ok(format!("{base_url}/{version}/{country}"))
-}
-
-async fn get_best_bc_artifact_version(
-    country_index_url: &str,
-    searched_version: BcVersion,
-) -> Result<String, Box<dyn Error>> {
-    let body = reqwest::get(country_index_url).await?.text().await?;
-    // Data is expected to arrive in this format:
-    // [{"Version":"15.4.41023.43755","CreationTime":"2020-06-26T00:13:59Z"},
-    // {"Version":"16.0.11240.31204","CreationTime":"2021-10-11T08:49:00Z"}]
-    let version_data: Vec<HashMap<String, String>> = serde_json::from_str(&body)?; // IDEA Cache?
-
-    let available_versions: Vec<BcVersion> = extract_available_versions(version_data);
-    let closest_available_version: BcVersion =
-        search_closest_available_version(&searched_version, available_versions);
-
-    Ok(closest_available_version.get_version_string())
-}
-
-fn extract_available_versions(version_data: Vec<HashMap<String, String>>) -> Vec<BcVersion> {
-    // TODO solve with map
-    let mut available_versions: Vec<BcVersion> = Vec::new();
-    for d in version_data.iter() {
-        available_versions.push(BcVersion::from_str(d.get(&"Version".to_string()).unwrap()));
-    }
-    available_versions
-}
-
-// IDEA Provide Setting on how strict to be with version selection
-fn search_closest_available_version(
-    searched_version: &BcVersion,
-    mut available_versions: Vec<BcVersion>,
-) -> BcVersion {
-    if available_versions.contains(searched_version) {
-        return *searched_version;
-    }
-
-    available_versions.retain(|v| v.major == searched_version.major);
-
-    if available_versions.is_empty() {
-        panic!("major not available");
-    }
-
-    if available_versions
-        .iter()
-        .any(|v| v.minor == searched_version.minor)
-    {
-        available_versions.retain(|v| v.minor == searched_version.minor);
-        if available_versions
-            .iter()
-            .any(|v| v.build == searched_version.build)
-        {
-            available_versions.retain(|v| v.build == searched_version.build);
+impl ArtifactResolver {
+    pub fn new(cache_path: PathBuf) -> Self {
+        Self {
+            client: reqwest::Client::new(), // TODO think about timeouts
+            base_url: Url::parse("https://bcartifacts-exdbf9fwegejdqak.b02.azurefd.net").unwrap(),
+            cache_path,
         }
     }
 
-    available_versions
-        .iter()
-        .filter(|v| *v > searched_version)
-        .max()
-        .copied()
-        .unwrap()
-}
+    pub async fn resolve(&self, request: BcArtifactRequest) -> Result<BcArtifact, ArtifactError> {
+        let requested_path = self.artifact_path(&request, &request.version);
 
-#[cfg(test)]
-mod test_artifact_url_building {
-    use super::*;
+        if tokio::fs::try_exists(&requested_path).await? {
+            let url = self.artifact_url(&request, &request.version);
 
-    #[test]
-    fn my_test() {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-                let result = build_bc_artifact_url("sandbox", "15.4.34.24553", "de").await; // expected version to find = 15.4.41023.43755
-                match result {
-                    Ok(s) => println!("{s}"),
-                    Err(e) => panic!("unexpected error: {e}"),
-                };
-            })
+            return Ok(BcArtifact {
+                deployment_type: request.deployment_type,
+                version: request.version,
+                country: request.country,
+                path: requested_path,
+                url,
+            });
+        }
+
+        let version = self.resolve_version(&request).await?;
+        let path = self.artifact_path(&request, &version);
+        let url = self.artifact_url(&request, &version);
+
+        if !tokio::fs::try_exists(&path).await? {
+            self.download_artifact(&url, &path).await?;
+        }
+
+        Ok(BcArtifact {
+            deployment_type: request.deployment_type,
+            version,
+            country: request.country,
+            path,
+            url,
+        })
+    }
+
+    async fn resolve_version(
+        &self,
+        request: &BcArtifactRequest,
+    ) -> Result<BcVersion, ArtifactError> {
+        let url = self.artifact_url(request, &request.version);
+
+        if self.artifact_exists(&url).await? {
+            return Ok(request.version);
+        }
+
+        self.get_next_bc_version(request).await
+    }
+
+    async fn artifact_exists(&self, url: &Url) -> Result<bool, ArtifactError> {
+        let response = self.client.head(url.clone()).send().await?;
+
+        match response.status() {
+            status if status.is_success() => Ok(true),
+            StatusCode::NOT_FOUND => Ok(false),
+            status => Err(ArtifactError::UnexpectedStatus {
+                status,
+                url: url.clone(),
+            }),
+        }
+    }
+
+    async fn get_next_bc_version(
+        &self,
+        artifact_request: &BcArtifactRequest,
+    ) -> Result<BcVersion, ArtifactError> {
+        let url = self.version_index_url(artifact_request);
+
+        // Data is expected to arrive in this format:
+        // [{"Version":"15.4.41023.43755","CreationTime":"2020-06-26T00:13:59Z"},
+        // {"Version":"16.0.11240.31204","CreationTime":"2021-10-11T08:49:00Z"}]
+
+        let response = self.client.get(url).send().await?.error_for_status()?;
+
+        let bytes = response.bytes().await?;
+
+        let entries: Vec<VersionEntry> = serde_json::from_slice(&bytes)?;
+
+        let versions = entries
+            .into_iter()
+            .map(|entry| entry.version.parse())
+            .collect::<Result<Vec<BcVersion>, BcVersionError>>()?;
+
+        find_next_higher_version(artifact_request.version, versions)
+    }
+
+    fn artifact_path(&self, request: &BcArtifactRequest, version: &BcVersion) -> PathBuf {
+        self.cache_path
+            .join(&request.deployment_type)
+            .join(version.to_string())
+            .join(&request.country)
+    }
+
+    fn artifact_url(&self, request: &BcArtifactRequest, version: &BcVersion) -> Url {
+        let mut url = self.base_url.clone();
+
+        url.path_segments_mut()
+            .expect("HTTPS URL can contain path segments")
+            .extend([
+                request.deployment_type.as_str(),
+                &version.to_string(),
+                request.country.as_str(),
+            ]);
+
+        url
+    }
+
+    fn version_index_url(&self, request: &BcArtifactRequest) -> Url {
+        let mut url = self.base_url.clone();
+
+        let index_file = format!("{}.json", request.country);
+
+        url.path_segments_mut()
+            .expect("HTTPS URL can contain path segments")
+            .extend([&request.deployment_type, "indexes", &index_file]);
+
+        url
+    }
+
+    async fn download_artifact(&self, url: &Url, path: &Path) -> Result<(), ArtifactError> {
+        let mut artifact_zip = path.to_path_buf();
+        artifact_zip.add_extension("zip");
+
+        if tokio::fs::try_exists(&artifact_zip).await? {
+            match extract_artifact(artifact_zip.clone(), path.to_path_buf()).await {
+                Ok(()) => return Ok(()),
+                Err(ArtifactError::Zip(_)) => {
+                    tokio::fs::remove_file(&artifact_zip).await?;
+                }
+                Err(err) => return Err(err),
+            } // TODO an error like disk full should not delete the zip
+        }
+
+        let temp_zip = artifact_zip.with_extension("zip.part");
+
+        if let Some(parent) = temp_zip.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+
+        let response = self.client.get(url.clone()).send().await?;
+
+        if response.status() == StatusCode::NOT_FOUND {
+            return Err(ArtifactError::NotFound(url.clone()));
+        }
+
+        let mut response = response.error_for_status()?;
+
+        let mut file = tokio::fs::File::create(&temp_zip).await?;
+
+        while let Some(chunk) = response.chunk().await? {
+            file.write_all(&chunk).await?;
+        }
+
+        file.flush().await?;
+        file.sync_all().await?;
+        drop(file);
+
+        tokio::fs::rename(&temp_zip, &artifact_zip).await?;
+
+        extract_artifact(artifact_zip, path.to_path_buf()).await?;
+
+        Ok(())
     }
 }
-// endregion get artifact url
+
+pub struct BcArtifact {
+    deployment_type: String,
+    version: BcVersion,
+    country: String,
+    path: PathBuf,
+    url: Url,
+}
+
+impl BcArtifact {
+    pub fn deployment_type(&self) -> &str {
+        &self.deployment_type
+    }
+    pub fn version(&self) -> BcVersion {
+        self.version
+    }
+    pub fn country(&self) -> &str {
+        &self.country
+    }
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+    pub fn url(&self) -> &Url {
+        &self.url
+    }
+}
+
+async fn extract_artifact(zip_path: PathBuf, destination: PathBuf) -> Result<(), ArtifactError> {
+    tokio::task::spawn_blocking(move || unzip(&zip_path, &destination)).await??;
+
+    Ok(())
+}
+
+pub fn unzip(zip_path: &Path, path: &Path) -> Result<(), ArtifactError> {
+    let temp_extract_path = path.with_extension("extracting");
+
+    if temp_extract_path.try_exists()? {
+        fs::remove_dir_all(&temp_extract_path)?;
+    }
+
+    let file = fs::File::open(zip_path)?;
+    let mut archive = ZipArchive::new(file)?;
+
+    archive.extract(&temp_extract_path)?;
+
+    fs::rename(&temp_extract_path, path)?;
+
+    fs::remove_file(zip_path)?;
+
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+struct VersionEntry {
+    #[serde(rename = "Version")]
+    version: String,
+}
+
+fn find_next_higher_version(
+    searched: BcVersion,
+    available: impl IntoIterator<Item = BcVersion>,
+) -> Result<BcVersion, ArtifactError> {
+    available
+        .into_iter()
+        .filter(|version| version.major == searched.major && *version > searched)
+        .min()
+        .ok_or(ArtifactError::NoCompatibleVersion(searched))
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ArtifactError {
+    #[error("artifact {0} was not found")]
+    NotFound(Url),
+
+    #[error("no suitable artifact version found for {0}")]
+    NoCompatibleVersion(BcVersion),
+
+    #[error("invalid BC version: {0}")]
+    Version(#[from] BcVersionError),
+
+    #[error("HTTP request failed: {0}")]
+    Http(#[from] reqwest::Error),
+
+    #[error("filesystem operation failed: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("invalid URL: {0}")]
+    Url(#[from] url::ParseError),
+
+    #[error("invalid artifact version index: {0}")]
+    InvalidVersionIndex(#[from] serde_json::Error),
+
+    #[error("background task failed: {0}")]
+    Task(#[from] tokio::task::JoinError),
+
+    #[error("ZIP error: {0}")]
+    Zip(#[from] zip::result::ZipError),
+
+    #[error("unexpected HTTP status {status} for {url}")]
+    UnexpectedStatus { status: StatusCode, url: Url },
+}

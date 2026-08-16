@@ -1,3 +1,4 @@
+use self::docker::artifact::ArtifactResolver;
 use self::docker::container::create_container;
 use futures_util::future::join;
 use serde::de;
@@ -71,13 +72,18 @@ impl ApplicationBasePaths {
 
 // reference for further expansion of Application state: https://rustz2h.com/chapter_15_rust_for_wasm_and_cross_platform_apps/series_03_desktop_apps_with_tauri/tauri_state
 pub struct AppState {
-    application_base_paths: Mutex<ApplicationBasePaths>, // TODO maybe mutex not required here if nothing changes while running
+    application_base_paths: ApplicationBasePaths,
+    artifact_resolver: ArtifactResolver,
 }
 
 impl Default for AppState {
     fn default() -> Self {
+        let application_base_paths = ApplicationBasePaths::new();
+        let artifact_cache_path = application_base_paths.artifacts_cache.clone();
+
         Self {
-            application_base_paths: Mutex::new(ApplicationBasePaths::new()),
+            application_base_paths: application_base_paths,
+            artifact_resolver: ArtifactResolver::new(artifact_cache_path),
         }
     }
 }

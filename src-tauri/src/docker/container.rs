@@ -1,12 +1,16 @@
-use crate::docker::{
-    artifact::{build_bc_artifact_url, download_artifact},
-    image::build_image,
-};
 use crate::utils::file_handling::get_data_dir;
 use crate::AppState;
+use crate::{
+    docker::{
+        artifact::{ArtifactResolver, BcArtifact, BcArtifactRequest},
+        image::build_image,
+    },
+    utils::bc_version::BcVersion,
+};
 use bollard::query_parameters::ListContainersOptionsBuilder;
 use bollard::Docker;
 use std::error::Error;
+use std::str::FromStr;
 use tauri::State;
 
 #[tauri::command]
@@ -16,9 +20,19 @@ pub async fn create_container(
     version: String,
     country: String,
 ) -> Result<(), String> {
-    let app_base_paths = state.application_base_paths.lock().unwrap();
-
+    let artifact: BcArtifact = state
+        .artifact_resolver
+        .resolve(BcArtifactRequest {
+            deployment_type,
+            version: BcVersion::from_str(&version).unwrap(),
+            country,
+        })
+        .await
+        .unwrap();
     Ok(())
+    // get artifact
+    // build image with artifact
+    // start container
 }
 
 #[cfg(test)]
