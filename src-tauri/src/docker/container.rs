@@ -1,40 +1,51 @@
-use crate::bc::artifact::{BcArtifact, BcArtifactRequest};
-use crate::bc::version::BcVersion;
 use crate::docker::image::BcImage;
-use crate::AppState;
-use std::str::FromStr;
-use tauri::State;
+use bollard::config::ContainerCreateBody;
+use bollard::query_parameters::{CreateContainerOptions, ListImagesOptionsBuilder};
 
-#[tauri::command]
-pub async fn create_container(
-    // TODO move into new command module
-    state: State<'_, AppState>,
-    deployment_type: String,
-    version: String,
-    country: String,
-) -> Result<(), String> {
-    let artifact: BcArtifact = state
-        .artifact_resolver
-        .resolve(BcArtifactRequest {
-            deployment_type,
-            version: BcVersion::from_str(&version).unwrap(),
-            country,
-        })
-        .await
-        .unwrap();
-    let image: BcImage = state.image_builder.build(&artifact).await.unwrap();
-    // let container: BcContainer = state.container_builder(&image).await.unwrap();
-    Ok(())
-    // get artifact
-    // build image with artifact
-    // start container
+pub struct BcContainer {
+    id: String,
 }
 
-#[cfg(test)]
-mod test_container_creation {
-    use super::*;
+pub struct ContainerBuilder {
+    docker: bollard::Docker,
+}
 
-    #[test]
-    #[ignore = "expensive, windows only, file creation, file copying, big downloads, archive extractions, ..."]
-    fn e2e_create_container() {}
+impl ContainerBuilder {
+    pub fn new() -> Self {
+        ContainerBuilder {
+            docker: bollard::Docker::connect_with_defaults().unwrap(),
+        }
+    }
+
+    pub async fn build(&self, image: &BcImage) -> Result<BcContainer, ContainerError> {
+        let options = ListImagesOptionsBuilder::default().all(true).build();
+        let images = self.docker.list_images(Some(options)).await?;
+        let image_ids: Vec<String> = images.iter().map(|i| i.id.clone()).collect(); // TODO redo
+        if !image_ids.contains(&image.id().to_string()) {
+            return Err(ContainerError::ImageNotFound(image.id().to_string()));
+        }
+        self.execute_build(image).await?;
+
+        Ok(BcContainer {
+            id: String::from("LOL"),
+        })
+    }
+
+    pub async fn execute_build(&self, image: &BcImage) -> Result<String, ContainerError> {
+        let options = CreateContainerOptions::default();
+        let mut config = ContainerCreateBody::default();
+        config.image = Some(image.id().to_string());
+        let container = self.docker.create_container(Some(options), config).await?;
+
+        Ok(container.id)
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ContainerError {
+    #[error("docker causes an error: {0}")]
+    BollardOperation(#[from] bollard::errors::Error),
+
+    #[error("could not find image {0} in docker")]
+    ImageNotFound(String),
 }

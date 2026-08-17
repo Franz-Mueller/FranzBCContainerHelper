@@ -1,6 +1,8 @@
 use self::bc::artifact::ArtifactResolver;
-use self::docker::container::create_container;
+use self::docker::container::ContainerBuilder;
 use self::docker::image::ImageBuilder;
+
+use self::commands::docker::create_docker_container;
 
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -10,6 +12,7 @@ use tauri::image::Image;
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 mod bc;
+mod commands;
 mod docker;
 mod utils;
 
@@ -82,6 +85,7 @@ pub struct AppState {
     application_base_paths: ApplicationBasePaths,
     artifact_resolver: ArtifactResolver,
     image_builder: ImageBuilder,
+    container_builder: ContainerBuilder,
 }
 
 impl Default for AppState {
@@ -94,6 +98,7 @@ impl Default for AppState {
             application_base_paths: application_base_paths,
             artifact_resolver: ArtifactResolver::new(artifact_cache_path),
             image_builder: ImageBuilder::new(image_build_path),
+            container_builder: ContainerBuilder::new(),
         }
     }
 }
@@ -116,7 +121,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![create_container])
+        .invoke_handler(tauri::generate_handler![create_docker_container])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
