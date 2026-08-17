@@ -12,6 +12,7 @@ pub async fn create_docker_container(
     deployment_type: String,
     version: String,
     country: String,
+    container_name: String,
 ) -> Result<(), String> {
     let version = BcVersion::from_str(&version).map_err(|err| err.to_string())?;
     let artifact: BcArtifact = state
@@ -30,7 +31,7 @@ pub async fn create_docker_container(
         .map_err(|err| err.to_string())?;
     state
         .container_builder
-        .build(&image)
+        .build(&image, &container_name)
         .await
         .map_err(|err| err.to_string())?;
     Ok(())

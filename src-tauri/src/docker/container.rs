@@ -1,9 +1,16 @@
 use crate::docker::image::BcImage;
 use bollard::config::ContainerCreateBody;
+use bollard::plugin::ContainerCreateResponse;
 use bollard::query_parameters::{CreateContainerOptions, ListImagesOptionsBuilder};
 
 pub struct BcContainer {
     id: String,
+    name: String,
+}
+
+impl BcContainer {
+    pub async fn start(&self) {}
+    pub async fn stop(&self) {}
 }
 
 pub struct ContainerBuilder {
@@ -17,27 +24,38 @@ impl ContainerBuilder {
         }
     }
 
-    pub async fn build(&self, image: &BcImage) -> Result<BcContainer, ContainerError> {
+    pub async fn build(
+        &self,
+        image: &BcImage,
+        container_name: &str,
+    ) -> Result<BcContainer, ContainerError> {
         let options = ListImagesOptionsBuilder::default().all(true).build();
         let images = self.docker.list_images(Some(options)).await?;
         let image_ids: Vec<String> = images.iter().map(|i| i.id.clone()).collect(); // TODO redo
         if !image_ids.contains(&image.id().to_string()) {
             return Err(ContainerError::ImageNotFound(image.id().to_string()));
         }
-        self.execute_build(image).await?;
+        let create_response = self.create_container(image, container_name).await?;
 
         Ok(BcContainer {
-            id: String::from("LOL"),
+            id: create_response.id,
+            name: String::from("LOL"),
         })
     }
 
-    pub async fn execute_build(&self, image: &BcImage) -> Result<String, ContainerError> {
-        let options = CreateContainerOptions::default();
+    pub async fn create_container(
+        &self,
+        image: &BcImage,
+        container_name: &str,
+    ) -> Result<ContainerCreateResponse, ContainerError> {
+        let mut options = CreateContainerOptions::default();
+        options.name = Some(container_name.to_string());
         let mut config = ContainerCreateBody::default();
         config.image = Some(image.id().to_string());
-        let container = self.docker.create_container(Some(options), config).await?;
 
-        Ok(container.id)
+        let create_response = self.docker.create_container(Some(options), config).await?;
+
+        Ok(create_response)
     }
 }
 
