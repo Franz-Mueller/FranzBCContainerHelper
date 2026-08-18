@@ -1,7 +1,11 @@
 use crate::bc::artifact::BcArtifact;
 use crate::bc::version::{BcVersion, BcVersionError};
 use crate::utils::file_handling::copy_dir_all;
-use bollard::{body_full, query_parameters::BuildImageOptionsBuilder, Docker};
+use bollard::{
+    body_full,
+    query_parameters::{BuildImageOptionsBuilder, ListImagesOptionsBuilder},
+    Docker,
+};
 use bytes::Bytes;
 use chrono::Local;
 use futures_util::StreamExt;
@@ -49,6 +53,8 @@ impl ImageBuilder {
             artifact.version(),
             artifact.country()
         );
+
+        // TODO check if image exists allready
 
         let build_folder_name = format!(
             "{}-{}-{}",
