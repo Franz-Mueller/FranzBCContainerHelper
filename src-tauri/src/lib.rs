@@ -8,12 +8,12 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs::create_dir_all;
 use std::path::PathBuf;
-use tauri::image::Image;
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 mod bc;
 mod commands;
 mod docker;
+mod git;
 mod utils;
 
 fn get_base_path() -> PathBuf {
@@ -46,6 +46,7 @@ pub struct ApplicationBasePaths {
     projects: PathBuf,
     dependencies_cache: PathBuf,
     image_build: PathBuf,
+    repos_path: PathBuf,
 }
 
 impl ApplicationBasePaths {
@@ -70,12 +71,17 @@ impl ApplicationBasePaths {
         if !image_build.try_exists().unwrap() {
             create_dir_all(&image_build).unwrap();
         }
+        let repos_path: PathBuf = base_path.join("repos");
+        if !repos_path.try_exists().unwrap() {
+            create_dir_all(&repos_path).unwrap();
+        }
         ApplicationBasePaths {
             base_path: base_path,
             artifacts_cache: artifacts_cache,
             projects: projects,
             dependencies_cache: dependencies_cache,
             image_build: image_build,
+            repos_path: repos_path,
         }
     }
 }
