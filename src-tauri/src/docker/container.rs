@@ -1,16 +1,26 @@
 use crate::docker::image::BcImage;
 use bollard::config::ContainerCreateBody;
 use bollard::plugin::ContainerCreateResponse;
-use bollard::query_parameters::{CreateContainerOptions, ListImagesOptionsBuilder};
+use bollard::query_parameters::{CreateContainerOptionsBuilder, ListImagesOptionsBuilder};
 
 pub struct BcContainer {
+    // TODO Container should inherit Connection to docker but should be aware of changes made to it
+    // would save some value passing
     id: String,
     name: String,
 }
 
 impl BcContainer {
-    pub async fn start(&self) {}
-    pub async fn stop(&self) {}
+    // pub async fn from_inspect() -> Result<Self, ContainerError> {}
+
+    pub async fn start(&self, docker: &bollard::Docker) -> Result<(), ContainerError> {
+        docker.start_container(&self.name, None).await?;
+        Ok(())
+    }
+    pub async fn stop(&self, docker: &bollard::Docker) -> Result<(), ContainerError> {
+        docker.stop_container(&self.name, None).await?;
+        Ok(())
+    }
 }
 
 pub struct ContainerBuilder {
@@ -35,12 +45,17 @@ impl ContainerBuilder {
         if !image_ids.contains(&image.id().to_string()) {
             return Err(ContainerError::ImageNotFound(image.id().to_string()));
         }
+
         let create_response = self.create_container(image, container_name).await?;
 
-        Ok(BcContainer {
+        let container = BcContainer {
             id: create_response.id,
-            name: String::from("LOL"),
-        })
+            name: container_name.to_string(),
+        };
+
+        container.start(&self.docker).await?;
+
+        Ok(container)
     }
 
     pub async fn create_container(
@@ -48,10 +63,15 @@ impl ContainerBuilder {
         image: &BcImage,
         container_name: &str,
     ) -> Result<ContainerCreateResponse, ContainerError> {
-        let mut options = CreateContainerOptions::default();
-        options.name = Some(container_name.to_string());
-        let mut config = ContainerCreateBody::default();
-        config.image = Some(image.id().to_string());
+        let options = CreateContainerOptionsBuilder::default()
+            .name(container_name)
+            .build();
+        let config = ContainerCreateBody {
+            // TODO detached = true
+            image: Some(image.id().to_string()),
+            env: Some(Vec::from(["accept_eula=Y".to_string()])),
+            ..Default::default()
+        };
 
         let create_response = self.docker.create_container(Some(options), config).await?;
 

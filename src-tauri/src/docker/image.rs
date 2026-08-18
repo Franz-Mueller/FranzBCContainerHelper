@@ -253,7 +253,7 @@ impl ImageBuilder {
                 Ok(info) => {
                     println!("{info:?}");
                 }
-                Err(err) => return Err(ImageError::DockerBuildFailed(err)),
+                Err(err) => return Err(ImageError::ImageBuildFailed(err)),
             }
         }
 
@@ -261,7 +261,7 @@ impl ImageBuilder {
             .docker
             .inspect_image(image_name)
             .await
-            .map_err(ImageError::DockerBuildFailed)?;
+            .map_err(ImageError::ImageBuildFailed)?;
 
         image
             .id
@@ -310,7 +310,7 @@ pub enum ImageError {
     Task(#[from] tokio::task::JoinError),
 
     #[error("building docker image failed: {0}")]
-    DockerBuildFailed(bollard::errors::Error),
+    ImageBuildFailed(bollard::errors::Error),
 
     #[error("docker image {0} does not have an image ID")]
     MissingImageId(String),
