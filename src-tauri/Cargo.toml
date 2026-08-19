@@ -34,6 +34,7 @@ chrono = "0.4.45"
 url = "2.5.8"
 anyhow = "1.0.104"
 thiserror = "2.0.20"
+git2 = "0.21.0"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
